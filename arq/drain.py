@@ -54,7 +54,7 @@ class Drain:
         self.pending_tasks: Set[asyncio.futures.Future] = set()
         self.task_exception: Exception = None
 
-        self.jobs_complete, self.jobs_failed, self.jobs_timed_out = 0, 0, 0
+        self.jobs_complete, self.jobs_failed, self.jobs_cancelled, self.jobs_timed_out = 0, 0, 0, 0
         self.running = False
         self._finish_lock = asyncio.Lock(loop=self.loop)
 
@@ -150,8 +150,13 @@ class Drain:
                 self.pending_tasks = set()
 
     def _job_callback(self, task):
+        try:
+            task_exception = task.exception()
+        except asyncio.CancelledError:
+            self.jobs_cancelled += 1
+            jobs_logger.debug('job cancelled, %s', task)
+            return
         self.jobs_complete += 1
-        task_exception = task.exception()
         if task_exception:
             self.running = False
             self.task_exception = task_exception
